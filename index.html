@@ -97,7 +97,9 @@
             line-height: 1.4;
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Load the main library and the worker directly as standard script embeds -->
+    <script src="https://cloudflare.com"></script>
+    <script src="https://cloudflare.com"></script>
 </head>
 <body>
 
@@ -120,7 +122,8 @@
 </div>
 
 <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cloudflare.com';
+    // Explicitly point to the window instance worker to completely bypass external loading blocks
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = window.pdfjsWorker;
 
     let extractedText = "";
     const fileInput = document.getElementById('pdf-upload');
@@ -139,7 +142,7 @@
 
         try {
             const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             let fullText = "";
 
             for (let i = 1; i <= pdf.numPages; i++) {
@@ -172,6 +175,7 @@
         processBtn.disabled = true;
 
         try {
+            // Limits string text data blocks safely to 4000 characters
             const textToSpeak = extractedText.substring(0, 4000); 
 
             const response = await fetch('https://openai.com', {
