@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Narrate — PDF Audio Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #111118;
+    --bg3: #1a1a24;
+    --bg4: #22222f;
+    --glass: rgba(255,255,255,0.04);
+    --glass-border: rgba(255,255,255,0.08);
+    --accent: #a78bfa;
+    --accent2: #818cf8;
+    --accent-glow: rgba(167,139,250,0.15);
+    --text: #f0f0f8;
+    --text2: #9090a8;
+    --text3: #5a5a72;
+    --highlight-bg: rgba(167,139,250,0.18);
+    --highlight-border: rgba(167,139,250,0.5);
+    --r: 16px;
+    --r-sm: 10px;
+    --font-display: 'DM Serif Display', Georgia, serif;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 15px; line-height: 1.6; overflow: hidden; }
+
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; border-bottom: 1px solid var(--glass-border); flex-shrink: 0; }
+  .logo { font-family: var(--font-display); font-size: 22px; letter-spacing: -0.5px; color: var(--text); }
+  .logo span { color: var(--accent); }
+  .header-actions { display: flex; gap: 10px; align-items: center; }
+  .btn-sm { padding: 7px 16px; border-radius: 50px; border: 1px solid var(--glass-border); background: var(--glass); color: var(--text2); font-size: 13px; cursor: pointer; transition: all 0.2s; font-family: var(--font-body); }
+  .btn-sm:hover { background: var(--bg3); color: var(--text); border-color: rgba(255,255,255,0.15); }
+  .btn-sm.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-sm.accent:hover { background: #c4b5fd; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); display: inline-block; margin-right: 6px; transition: background 0.3s; }
+  .status-dot.active { background: #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.5); }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  #upload-view { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; padding: 40px; }
+  .upload-zone { width: 100%; max-width: 520px; border: 2px dashed var(--glass-border); border-radius: 24px; padding: 60px 40px; text-align: center; cursor: pointer; transition: all 0.3s; background: var(--glass); position: relative; overflow: hidden; }
+  .upload-zone::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 50% 0%, var(--accent-glow), transparent 70%); opacity: 0; transition: opacity 0.3s; }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(167,139,250,0.06); }
+  .upload-zone:hover::before, .upload-zone.drag::before { opacity: 1; }
+  .upload-icon { font-size: 48px; margin-bottom: 20px; display: block; }
+  .upload-title { font-family: var(--font-display); font-size: 26px; margin-bottom: 10px; color: var(--text); }
+  .upload-sub { color: var(--text2); font-size: 14px; line-height: 1.6; }
+  .upload-sub strong { color: var(--accent); }
+  .upload-btn { margin-top: 28px; padding: 12px 32px; background: var(--accent); border: none; border-radius: 50px; color: #fff; font-size: 15px; cursor: pointer; font-family: var(--font-body); font-weight: 500; transition: all 0.2s; }
+  .upload-btn:hover { background: #c4b5fd; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(167,139,250,0.3); }
+  #file-input { display: none; }
+  .features-row { display: flex; gap: 20px; margin-top: 40px; flex-wrap: wrap; justify-content: center; }
+  .feature-chip { padding: 8px 18px; border-radius: 50px; border: 1px solid var(--glass-border); background: var(--glass); font-size: 13px; color: var(--text2); display: flex; align-items: center; gap: 7px; }
+
+  #reader-view { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+
+  .reader-top { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--glass-border); flex-shrink: 0; }
+  .file-badge { display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--bg3); border-radius: 50px; border: 1px solid var(--glass-border); }
+  .file-badge-icon { width: 28px; height: 28px; background: linear-gradient(135deg, #a78bfa, #818cf8); border-radius: 7px; display: flex; align-items: center; justify-content: center; }
+  .file-name { font-size: 13px; color: var(--text); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-info { font-size: 13px; color: var(--text3); margin-left: auto; }
+  .voice-selector { display: flex; align-items: center; gap: 8px; }
+  .voice-selector label { font-size: 13px; color: var(--text3); }
+  .voice-select { background: var(--bg3); border: 1px solid var(--glass-border); color: var(--text); font-size: 13px; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-family: var(--font-body); }
+
+  .reader-content { display: flex; flex: 1; overflow: hidden; }
+
+  .text-panel { flex: 1; overflow-y: auto; padding: 40px 50px; line-height: 1.9; scroll-behavior: smooth; }
+  .text-panel::-webkit-scrollbar { width: 6px; }
+  .text-panel::-webkit-scrollbar-track { background: transparent; }
+  .text-panel::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+  .sentence { display: inline; cursor: pointer; border-radius: 4px; padding: 1px 2px; margin: 0 1px; transition: background 0.2s, color 0.2s; }
+  .sentence:hover { background: rgba(167,139,250,0.1); }
+  .sentence.active { background: var(--highlight-bg); color: var(--text); box-shadow: inset 0 0 0 1px var(--highlight-border); }
+  .sentence.read { color: var(--text3); }
+  .para { margin-bottom: 1.4em; font-size: 17px; font-weight: 300; color: var(--text); }
+
+  #loading-overlay { display: none; position: fixed; inset: 0; background: rgba(10,10,15,0.85); backdrop-filter: blur(10px); z-index: 100; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+  #loading-overlay.show { display: flex; }
+  .spinner { width: 44px; height: 44px; border: 2px solid var(--bg4); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--text2); font-size: 15px; }
+  .progress-bar { width: 200px; height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.3s; }
+
+  .player { flex-shrink: 0; background: var(--bg2); border-top: 1px solid var(--glass-border); padding: 20px 28px; }
+  .player-inner { max-width: 900px; margin: 0 auto; }
+  .player-top { display: flex; align-items: center; gap: 20px; margin-bottom: 16px; }
+  .player-title { flex: 1; min-width: 0; }
+  .player-doc { font-size: 13px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player-sentence { font-size: 14px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .controls { display: flex; align-items: center; gap: 10px; }
+  .ctrl-btn { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--glass-border); background: var(--glass); color: var(--text2); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
+  .ctrl-btn:hover { background: var(--bg3); color: var(--text); border-color: rgba(255,255,255,0.15); }
+  .ctrl-btn.play { width: 46px; height: 46px; background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ctrl-btn.play:hover { background: #c4b5fd; transform: scale(1.05); }
+  .speed-btn { padding: 6px 12px; border-radius: 50px; border: 1px solid var(--glass-border); background: var(--glass); color: var(--text2); font-size: 13px; cursor: pointer; font-family: var(--font-body); transition: all 0.2s; min-width: 48px; text-align: center; }
+  .speed-btn:hover { background: var(--bg3); color: var(--text); }
+  .seek-row { display: flex; align-items: center; gap: 14px; }
+  .time-label { font-size: 12px; color: var(--text3); min-width: 36px; }
+  .time-label.right { text-align: right; }
+  .seek-bar { flex: 1; -webkit-appearance: none; appearance: none; height: 4px; background: var(--bg4); border-radius: 2px; outline: none; cursor: pointer; }
+  .seek-bar::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: pointer; transition: transform 0.15s; }
+  .seek-bar::-webkit-slider-thumb:hover { transform: scale(1.3); }
+  .vol-icon { color: var(--text3); display: flex; align-items: center; }
+  .vol-bar { width: 80px; -webkit-appearance: none; appearance: none; height: 3px; background: var(--bg4); border-radius: 2px; outline: none; cursor: pointer; }
+  .vol-bar::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text2); cursor: pointer; }
+
+  .waveform { display: flex; align-items: center; gap: 3px; height: 24px; }
+  .wave-bar { width: 3px; border-radius: 2px; background: var(--accent); opacity: 0.7; }
+  .wave-bar.a { animation: wave 0.9s ease-in-out infinite; height: 8px; }
+  .wave-bar.b { animation: wave 0.9s ease-in-out 0.15s infinite; height: 14px; }
+  .wave-bar.c { animation: wave 0.9s ease-in-out 0.3s infinite; height: 20px; }
+  .wave-bar.d { animation: wave 0.9s ease-in-out 0.45s infinite; height: 12px; }
+  .wave-bar.e { animation: wave 0.9s ease-in-out 0.6s infinite; height: 6px; }
+  @keyframes wave { 0%,100% { transform: scaleY(1); opacity: 0.5; } 50% { transform: scaleY(1.6); opacity: 1; } }
+  .waveform.paused .wave-bar { animation: none; transform: scaleY(0.4); opacity: 0.3; }
+
+  .toast { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); background: #3f1515; border: 1px solid #7f2b2b; color: #fca5a5; padding: 12px 24px; border-radius: 50px; font-size: 14px; z-index: 200; display: none; }
+  .toast.show { display: block; }
+
+  .stats-panel { width: 220px; flex-shrink: 0; border-left: 1px solid var(--glass-border); padding: 24px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+  .stat-card { background: var(--bg3); border-radius: var(--r-sm); padding: 16px; border: 1px solid var(--glass-border); }
+  .stat-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 500; color: var(--text); line-height: 1; }
+  .stat-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+  .section-title { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+
+  @media (max-width: 700px) {
+    .stats-panel { display: none; }
+    .text-panel { padding: 24px 20px; }
+    .reader-top { flex-wrap: wrap; gap: 10px; }
+    .voice-selector { width: 100%; }
+    .player { padding: 14px 16px; }
+    .controls { gap: 7px; }
+    .vol-bar { display: none; }
+    .vol-icon { display: none; }
+    .header { padding: 14px 18px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="header">
+    <div class="logo">narr<span>.</span>ate</div>
+    <div class="header-actions">
+      <span style="font-size:13px; color:var(--text3);">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Ready</span>
+      </span>
+      <button class="btn-sm" id="new-file-btn" style="display:none">New file</button>
+      <button class="btn-sm accent" id="save-btn" style="display:none">⬇ Save MP3</button>
+    </div>
+  </header>
+
+  <div id="upload-view">
+    <div class="upload-zone" id="drop-zone">
+      <span class="upload-icon">📄</span>
+      <div class="upload-title">Drop your PDF here</div>
+      <div class="upload-sub">Upload any PDF and hear it read aloud with<br><strong>natural AI narration</strong> and live text highlighting</div>
+      <button class="upload-btn" onclick="document.getElementById('file-input').click()">Choose PDF file</button>
+      <input type="file" id="file-input" accept=".pdf,application/pdf">
+    </div>
+    <div class="features-row">
+      <div class="feature-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        AI Voice Narration
+      </div>
+      <div class="feature-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        Live Text Sync
+      </div>
+      <div class="feature-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Speed Control
+      </div>
+      <div class="feature-chip">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Multi-voice
+      </div>
+    </div>
+  </div>
+
+  <div id="reader-view">
+    <div class="reader-top">
+      <div class="file-badge">
+        <div class="file-badge-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <span class="file-name" id="file-name-display">document.pdf</span>
+      </div>
+      <span class="page-info" id="page-info"></span>
+      <div class="voice-selector">
+        <label>Voice</label>
+        <select class="voice-select" id="voice-select">
+          <!-- Voice options will be populated dynamically from available system voices -->
+        </select>
+      </div>
+    </div>
+
+    <div class="reader-content">
+      <div class="text-panel" id="text-panel"></div>
+      <div class="stats-panel">
+        <div class="section-title">Document stats</div>
+        <div class="stat-card">
+          <div class="stat-label">Words</div>
+          <div class="stat-value" id="stat-words">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sentences</div>
+          <div class="stat-value" id="stat-sentences">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Est. duration</div>
+          <div class="stat-value" id="stat-duration">—</div>
+          <div class="stat-sub">at normal speed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Progress</div>
+          <div class="stat-value" id="stat-progress">0%</div>
+          <div class="stat-sub" id="stat-read">0 sentences read</div>
+        </div>
+        <div class="section-title" style="margin-top:8px">Playback</div>
+        <div class="stat-card">
+          <div class="stat-label">Current speed</div>
+          <div class="stat-value" id="stat-speed">0.85×</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Voice</div>
+          <div class="stat-value" style="font-size:16px" id="stat-voice">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="player">
+      <div class="player-inner">
+        <div class="player-top">
+          <div class="player-title">
+            <div class="player-doc" id="player-doc">—</div>
+            <div class="player-sentence" id="player-sentence">Press play to begin narration</div>
+          </div>
+          <div class="waveform paused" id="waveform">
+            <div class="wave-bar a"></div>
+            <div class="wave-bar b"></div>
+            <div class="wave-bar c"></div>
+            <div class="wave-bar d"></div>
+            <div class="wave-bar e"></div>
+          </div>
+          <div class="controls">
+            <button class="ctrl-btn" id="prev-btn" title="Previous sentence">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+            </button>
+            <button class="ctrl-btn play" id="play-btn" title="Play / Pause">
+              <svg id="play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg id="pause-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+            <button class="ctrl-btn" id="next-btn" title="Next sentence">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"/></svg>
+            </button>
+            <button class="speed-btn" id="speed-btn">0.85×</button>
+            <span class="vol-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </span>
+            <input type="range" class="vol-bar" id="vol-bar" min="0" max="1" step="0.01" value="1">
+          </div>
+        </div>
+        <div class="seek-row">
+          <span class="time-label" id="time-cur">0:00</span>
+          <input type="range" class="seek-bar" id="seek-bar" min="0" max="100" value="0" step="0.1">
+          <span class="time-label right" id="time-total">0:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+  <div class="loading-text" id="loading-text">Extracting text from PDF…</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let sentences = [];
+let currentIdx = 0;
+let isPlaying = false;
+let speed = 0.85;                     // default slower, more human pace
+let fileName = '';
+let currentUtterance = null;
+let seekTimer = null;
+let sentenceStart = 0;
+let estDuration = 0;
+const SPEEDS = [0.85, 1, 1.25, 1.5, 2];  // added 0.85 at the start
+let speedIdx = 0;                       // start at 0.85×
+let availableVoices = [];               // will hold all system voices
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const uploadView = document.getElementById('upload-view');
+const readerView = document.getElementById('reader-view');
+const textPanel = document.getElementById('text-panel');
+const loadingOverlay = document.getElementById('loading-overlay');
+const progressFill = document.getElementById('progress-fill');
+const loadingText = document.getElementById('loading-text');
+const playBtn = document.getElementById('play-btn');
+const playIcon = document.getElementById('play-icon');
+const pauseIcon = document.getElementById('pause-icon');
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
+const speedBtn = document.getElementById('speed-btn');
+const seekBar = document.getElementById('seek-bar');
+const timeCur = document.getElementById('time-cur');
+const timeTotal = document.getElementById('time-total');
+const volBar = document.getElementById('vol-bar');
+const playerSentence = document.getElementById('player-sentence');
+const playerDoc = document.getElementById('player-doc');
+const waveform = document.getElementById('waveform');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const toast = document.getElementById('toast');
+const voiceSelect = document.getElementById('voice-select');
+
+// ---------- voice population ----------
+function populateVoiceList() {
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices || voices.length === 0) return;
+
+  // Sort voices: English first, then by language
+  const sorted = [...voices].sort((a, b) => {
+    const aEn = a.lang.startsWith('en') ? 0 : 1;
+    const bEn = b.lang.startsWith('en') ? 0 : 1;
+    if (aEn !== bEn) return aEn - bEn;
+    return a.name.localeCompare(b.name);
+  });
+
+  availableVoices = sorted;
+
+  // Clear and refill the select
+  voiceSelect.innerHTML = '';
+  sorted.forEach((voice, index) => {
+    const option = document.createElement('option');
+    option.value = index;
+    option.textContent = `${voice.name} (${voice.lang})`;
+    voiceSelect.appendChild(option);
+  });
+
+  // Pre-select the first English voice (or first voice)
+  const englishIdx = sorted.findIndex(v => v.lang.startsWith('en'));
+  voiceSelect.value = englishIdx >= 0 ? englishIdx : 0;
+
+  // Update stats panel voice name
+  updateVoiceDisplay();
+}
+
+function updateVoiceDisplay() {
+  const idx = parseInt(voiceSelect.value, 10);
+  if (availableVoices[idx]) {
+    document.getElementById('stat-voice').textContent = availableVoices[idx].name;
+  } else {
+    document.getElementById('stat-voice').textContent = '—';
+  }
+}
+
+// Try to populate on load; also listen for changes
+populateVoiceList();
+window.speechSynthesis.onvoiceschanged = populateVoiceList;
+
+voiceSelect.addEventListener('change', () => {
+  updateVoiceDisplay();
+  // If currently playing, restart current sentence with new voice
+  if (isPlaying) {
+    const idx = currentIdx;
+    stopAudio();
+    isPlaying = true;
+    speakSentence(idx);
+  }
+});
+
+// ---------- PDF handling (unchanged logic) ----------
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') loadPDF(f);
+  else showToast('Please drop a PDF file');
+});
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadPDF(e.target.files[0]); });
+document.getElementById('new-file-btn').addEventListener('click', () => {
+  stopAudio();
+  uploadView.style.display = 'flex';
+  readerView.style.display = 'none';
+  document.getElementById('new-file-btn').style.display = 'none';
+  document.getElementById('save-btn').style.display = 'none';
+  fileInput.value = '';
+});
+
+async function loadPDF(file) {
+  fileName = file.name.replace('.pdf','');
+  showLoading('Reading PDF…', 10);
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    showLoading('Parsing pages…', 30);
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let allText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(item => item.str).join(' ');
+      allText += pageText + '\n\n';
+      showLoading(`Extracting page ${i} of ${pdf.numPages}…`, 30 + Math.round((i/pdf.numPages)*40));
+    }
+    showLoading('Processing text…', 80);
+    await new Promise(r => setTimeout(r, 200));
+    sentences = extractSentences(allText);
+    showLoading('Preparing reader…', 95);
+    await new Promise(r => setTimeout(r, 200));
+    hideLoading();
+    showReader(pdf.numPages);
+  } catch(e) {
+    hideLoading();
+    showToast('Failed to read PDF. Please try another file.');
+    console.error(e);
+  }
+}
+
+function extractSentences(text) {
+  text = text.replace(/\s+/g, ' ').trim();
+  text = text.replace(/([.!?])\s+/g, '$1\n');
+  const raw = text.split('\n').map(s => s.trim()).filter(s => s.length > 8);
+  return raw.slice(0, 300);
+}
+
+function showReader(numPages) {
+  uploadView.style.display = 'none';
+  readerView.style.display = 'flex';
+  document.getElementById('new-file-btn').style.display = '';
+  document.getElementById('save-btn').style.display = '';
+  document.getElementById('file-name-display').textContent = fileName;
+  document.getElementById('page-info').textContent = `${numPages} pages · ${sentences.length} sentences`;
+  playerDoc.textContent = fileName;
+
+  const wordCount = sentences.join(' ').split(/\s+/).length;
+  document.getElementById('stat-words').textContent = wordCount.toLocaleString();
+  document.getElementById('stat-sentences').textContent = sentences.length;
+  const mins = Math.round(wordCount / 150);
+  document.getElementById('stat-duration').textContent = mins < 60 ? `${mins} min` : `${Math.floor(mins/60)}h ${mins%60}m`;
+
+  textPanel.innerHTML = '';
+  sentences.forEach((s, i) => {
+    const span = document.createElement('span');
+    span.className = 'sentence';
+    span.id = `s-${i}`;
+    span.textContent = s + ' ';
+    span.addEventListener('click', () => jumpTo(i));
+    textPanel.appendChild(span);
+  });
+
+  setStatus('Ready', false);
+}
+
+function highlightSentence(idx) {
+  sentences.forEach((_, i) => {
+    const el = document.getElementById(`s-${i}`);
+    if (!el) return;
+    el.classList.remove('active');
+    if (i < idx) el.classList.add('read');
+    else el.classList.remove('read');
+  });
+  const activeEl = document.getElementById(`s-${idx}`);
+  if (activeEl) {
+    activeEl.classList.add('active');
+    activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  const sent = sentences[idx] || '';
+  playerSentence.textContent = sent.length > 80 ? sent.slice(0,80) + '…' : sent;
+  const pct = Math.round((idx / Math.max(1, sentences.length - 1)) * 100);
+  document.getElementById('stat-progress').textContent = pct + '%';
+  document.getElementById('stat-read').textContent = `${idx} sentences read`;
+}
+
+function speakSentence(idx) {
+  if (idx >= sentences.length) { stopAudio(); return; }
+  if (currentUtterance) { window.speechSynthesis.cancel(); currentUtterance = null; }
+
+  currentIdx = idx;
+  highlightSentence(idx);
+  setStatus('Playing', true);
+
+  const text = sentences[idx];
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = speed;
+  utterance.volume = parseFloat(volBar.value);
+
+  // Use the voice selected in the dropdown
+  const voiceIdx = parseInt(voiceSelect.value, 10);
+  if (availableVoices[voiceIdx]) {
+    utterance.voice = availableVoices[voiceIdx];
+  }
+
+  utterance.onstart = () => { waveform.classList.remove('paused'); startSeekTimer(); };
+  utterance.onend = () => { if (isPlaying) speakSentence(currentIdx + 1); };
+  utterance.onerror = (e) => {
+    if (e.error !== 'interrupted') {
+      setStatus('Ready', false);
+      isPlaying = false;
+      updatePlayBtn();
+    }
+  };
+
+  window.speechSynthesis.speak(utterance);
+  currentUtterance = utterance;
+}
+
+function startSeekTimer() {
+  clearInterval(seekTimer);
+  sentenceStart = Date.now();
+  seekTimer = setInterval(() => {
+    seekBar.value = (currentIdx / Math.max(1, sentences.length - 1)) * 100;
+    const elapsedSec = Math.floor((currentIdx / Math.max(1, sentences.length)) * estimateTotalSecs());
+    timeCur.textContent = formatTime(elapsedSec);
+    timeTotal.textContent = formatTime(estimateTotalSecs());
+  }, 250);
+}
+
+function estimateTotalSecs() {
+  const words = sentences.join(' ').split(' ').length;
+  return Math.round((words / 2.5) / speed);
+}
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+function stopAudio() {
+  window.speechSynthesis.cancel();
+  clearInterval(seekTimer);
+  currentUtterance = null;
+  isPlaying = false;
+  waveform.classList.add('paused');
+  updatePlayBtn();
+  setStatus('Ready', false);
+}
+
+function jumpTo(idx) {
+  const wasPlaying = isPlaying;
+  stopAudio();
+  currentIdx = idx;
+  highlightSentence(idx);
+  if (wasPlaying) { isPlaying = true; updatePlayBtn(); speakSentence(idx); }
+}
+
+playBtn.addEventListener('click', () => {
+  if (isPlaying) {
+    window.speechSynthesis.cancel();
+    clearInterval(seekTimer);
+    currentUtterance = null;
+    isPlaying = false;
+    waveform.classList.add('paused');
+    setStatus('Paused', false);
+  } else {
+    isPlaying = true;
+    speakSentence(currentIdx);
+    waveform.classList.remove('paused');
+    setStatus('Playing', true);
+  }
+  updatePlayBtn();
+});
+
+prevBtn.addEventListener('click', () => { if (currentIdx > 0) jumpTo(currentIdx - 1); });
+nextBtn.addEventListener('click', () => { if (currentIdx < sentences.length - 1) jumpTo(currentIdx + 1); });
+
+speedBtn.addEventListener('click', () => {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  speed = SPEEDS[speedIdx];
+  speedBtn.textContent = speed + '×';
+  document.getElementById('stat-speed').textContent = speed + '×';
+  if (window.speechSynthesis.speaking) {
+    const idx = currentIdx;
+    stopAudio();
+    isPlaying = true;
+    speakSentence(idx);
+  }
+});
+
+volBar.addEventListener('input', () => {
+  if (currentUtterance) currentUtterance.volume = parseFloat(volBar.value);
+});
+
+seekBar.addEventListener('input', () => {
+  const pct = parseFloat(seekBar.value) / 100;
+  const idx = Math.round(pct * (sentences.length - 1));
+  jumpTo(idx);
+});
+
+document.getElementById('save-btn').addEventListener('click', () => {
+  showToast('MP3 export requires OpenAI TTS API. Add your key in the backend to enable downloads.');
+  setTimeout(() => toast.classList.remove('show'), 4000);
+});
+
+function updatePlayBtn() {
+  if (isPlaying) { playIcon.style.display = 'none'; pauseIcon.style.display = ''; }
+  else { playIcon.style.display = ''; pauseIcon.style.display = 'none'; }
+}
+
+function setStatus(txt, active) {
+  statusText.textContent = txt;
+  statusDot.className = 'status-dot' + (active ? ' active' : '');
+}
+
+function showLoading(msg, pct) {
+  loadingOverlay.classList.add('show');
+  loadingText.textContent = msg;
+  progressFill.style.width = pct + '%';
+}
+function hideLoading() { loadingOverlay.classList.remove('show'); }
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 4000);
+}
+</script>
+</body>
+</html>
